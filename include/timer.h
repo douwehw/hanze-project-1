@@ -16,6 +16,7 @@ public:
 
     double seconds();
     long milliseconds();
+    bool started(){return _started;}
 private:
     long _startTicks;
     long _pausedTicks;
