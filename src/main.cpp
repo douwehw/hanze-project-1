@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <vector>
 
 #include <tm1637_display.h>
 #include <timer.h>
@@ -16,8 +15,10 @@
 #define DIO 16
 
 // Pins for the LED's
-const std::vector<uint8_t> *GREEN_LEDS = new std::vector<uint8_t>{13, 12, 14};
-const std::vector<uint8_t> *RED_LEDS = new std::vector<uint8_t>{18, 19, 21};
+const uint8_t GREEN_LEDS[] = {13, 12, 14};
+const uint8_t GREEN_LED_COUNT = 3;
+const uint8_t RED_LEDS[] = {18, 19, 21};
+const uint8_t RED_LED_COUNT = 3;
 
 // Pin for start button
 #define START 23
@@ -29,14 +30,17 @@ hx711_loadcell *red_loadcell;
 
 // Initialising all timers
 Timer *timer;
-Timer *puck_on_scale_timer;
+Timer *green_puck_timer;
+Timer *red_puck_timer;
 
 // Initialising all bools needed for loop logic
 volatile bool game_started = false;
 bool puck_in_goal = false;
 
-uint8_t green_score, red_score = 0;
-uint8_t prev_green_score, prev_red_score = 0;
+uint8_t green_score = 0;
+uint8_t red_score = 0;
+uint8_t prev_green_score = 0;
+uint8_t prev_red_score = 0;
 
 enum GameState
 {
@@ -47,15 +51,33 @@ enum GameState
     FINISHED,
 };
 
+const char *game_state_to_string(GameState s)
+{
+    switch (s)
+    {
+    case NOT_STARTED:
+        return "NOT_STARTED";
+    case ONGOING:
+        return "ONGOING";
+    case PUCK_IN_GOAL:
+        return "PUCK_IN_GOAL";
+    case GOAL_SCORED:
+        return "GOAL_SCORED";
+    case FINISHED:
+        return "FINISHED";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 GameState game_state = NOT_STARTED;
-GameState prev_game_state = game_state;
+GameState prev_game_state = NOT_STARTED;
 
 void startGame();
 void handleScores();
 void handleGreenSideLogic();
 void handleRedSideLogic();
 void updateGameState();
-void disableLEDs();
 
 void setup()
 {
@@ -63,41 +85,36 @@ void setup()
 
     // General initialising for the sensors
     display = new TM1367_Display(CLK, DIO);
-    green_loadcell = new hx711_loadcell(GREEN_DOUT, GREEN_SCK, 150000); //}
-    red_loadcell = new hx711_loadcell(RED_DOUT, RED_SCK, 150000);       //} one of these needs to be calibrated to ~120k and the other to ~200k
+    display->showTime(0);
+    green_loadcell = new hx711_loadcell(GREEN_DOUT, GREEN_SCK, 150000);
+    red_loadcell = new hx711_loadcell(RED_DOUT, RED_SCK, 150000);
 
     timer = new Timer();
-    puck_on_scale_timer = new Timer();
+    green_puck_timer = new Timer();
+    red_puck_timer = new Timer();
 
     // Set up all LED pins and ensure they are all off
-    for (const uint8_t pin : *GREEN_LEDS)
+    for (uint8_t i = 0; i < GREEN_LED_COUNT; i++)
     {
-        pinMode(pin, OUTPUT);
-        digitalWrite(pin, LOW);
+        pinMode(GREEN_LEDS[i], OUTPUT);
+        digitalWrite(GREEN_LEDS[i], LOW);
     }
-    for (const uint8_t pin : *RED_LEDS)
+    for (uint8_t i = 0; i < RED_LED_COUNT; i++)
     {
-        pinMode(pin, OUTPUT);
-        digitalWrite(pin, LOW);
+        pinMode(RED_LEDS[i], OUTPUT);
+        digitalWrite(RED_LEDS[i], LOW);
     }
 
     // Initialising the start button
     pinMode(START, INPUT);
-
-    attachInterrupt(START, startGame, RISING); // no matter when you press the button, it will always start the game
+    attachInterrupt(START, startGame, RISING);
 }
 
 void loop()
 {
     if (!game_started)
-    { // do nothing if the game hasn't started
+    {
         return;
-    }
-
-    if (!timer->started())
-    { // start a timer, the game has started
-        timer->start();
-        game_state = ONGOING;
     }
 
     // cast the timer's seconds to int to get rid of the floating point
@@ -113,16 +130,24 @@ void loop()
 
 void startGame()
 {
-    for (const uint8_t pin : *GREEN_LEDS)
+    if (game_started)
     {
-        digitalWrite(pin, LOW);
+        return;
     }
-    for (const uint8_t pin : *RED_LEDS)
+
+    // Turn off all LEDs
+    for (uint8_t i = 0; i < GREEN_LED_COUNT; i++)
     {
-        digitalWrite(pin, LOW);
+        digitalWrite(GREEN_LEDS[i], LOW);
+    }
+    for (uint8_t i = 0; i < RED_LED_COUNT; i++)
+    {
+        digitalWrite(RED_LEDS[i], LOW);
     }
 
     game_started = true;
+    timer->start();
+    game_state = ONGOING;
 }
 
 void handleScores()
@@ -132,17 +157,20 @@ void handleScores()
         return;
     }
 
-    for (uint8_t score = 0; score < green_score; score++)
+    // Turn on LEDs for green score
+    for (uint8_t score = 0; (score < green_score) && (score < GREEN_LED_COUNT); score++)
     {
-        digitalWrite(GREEN_LEDS->at(score), HIGH);
+        digitalWrite(GREEN_LEDS[score], HIGH);
     }
 
-    for (uint8_t score = 0; score < red_score; score++)
+    // Turn on LEDs for red score
+    for (uint8_t score = 0; (score < red_score) && (score < RED_LED_COUNT); score++)
     {
-        digitalWrite(RED_LEDS->at(score), HIGH);
+        digitalWrite(RED_LEDS[score], HIGH);
     }
 
-    if (green_score == 3 || red_score == 3)
+    // Check for game end condition
+    if (green_score >= 3 || red_score >= 3)
     {
         timer->pause();
         game_started = false;
@@ -155,114 +183,119 @@ void handleScores()
 
 void handleGreenSideLogic()
 {
-    if (green_loadcell->isPressed() && !puck_in_goal)
-    { // Scale tipped
+    bool scale_pressed = green_loadcell->isPressed();
+
+    // Phase 1: Waiting for goal (scale pressed, no goal yet)
+    if (scale_pressed && !puck_in_goal)
+    {
         game_state = PUCK_IN_GOAL;
 
-        if (!puck_on_scale_timer->started())
-        { // start timing how long puck is on scale
-            puck_on_scale_timer->start();
+        if (!green_puck_timer->started())
+        {
+            // Start timing how long puck is on scale
+            green_puck_timer->start();
         }
         else
-        { // Puck is on the scale and the timer is already running
-            if (puck_on_scale_timer->seconds() >= 1.0)
+        {
+            // Puck is on the scale and the timer is already running
+            if (green_puck_timer->seconds() >= 1.0)
             {
-                puck_in_goal = true;
-                puck_on_scale_timer->stop();
+                green_puck_timer->stop();
                 green_score++;
+                puck_in_goal = true;
                 game_state = GOAL_SCORED;
-            }
-            else
-            { // It hasn't been a full second since the puck has been on the scale
-                if (!green_loadcell->isPressed())
-                {
-                    puck_on_scale_timer->stop();
-                    game_state = ONGOING;
-                }
             }
         }
     }
-
-    if (puck_in_goal && !green_loadcell->isPressed())
-    { // Scale no longer tipped
-        if (!puck_on_scale_timer->started())
-        { // yes i am reusing the scale timer to check for how long it has not been on the timer
-            puck_on_scale_timer->start();
+    // Phase 1: Scale released before 1 second - cancel goal attempt
+    else if (!scale_pressed && !puck_in_goal && game_state == PUCK_IN_GOAL)
+    {
+        green_puck_timer->stop();
+        game_state = ONGOING;
+    }
+    // Phase 2: Goal scored, waiting for scale release
+    else if (!scale_pressed && puck_in_goal)
+    {
+        if (!green_puck_timer->started())
+        {
+            // Start timing how long puck has been off the scale
+            green_puck_timer->start();
         }
         else
-        { // puck isn't on the scale anymore and the timer is already running
-            if (puck_on_scale_timer->seconds() >= 1.0)
+        {
+            // Puck has been off the scale for the required time
+            if (green_puck_timer->seconds() >= 1.0)
             {
                 puck_in_goal = false;
-                puck_on_scale_timer->stop();
-
+                green_puck_timer->stop();
                 game_state = ONGOING;
             }
-            else
-            { // It hasn't been a full second since the puck has been off the scale
-                if (green_loadcell->isPressed())
-                {
-                    puck_on_scale_timer->stop();
-                    game_state = PUCK_IN_GOAL;
-                }
-            }
         }
+    }
+    // Phase 2: Scale pressed again during release wait - cancel release timer
+    else if (scale_pressed && puck_in_goal)
+    {
+        green_puck_timer->stop();
+        game_state = PUCK_IN_GOAL;
     }
 }
 
 void handleRedSideLogic()
 {
-    if (red_loadcell->isPressed() && !puck_in_goal)
-    { // Scale tipped
+    bool scale_pressed = red_loadcell->isPressed();
+
+    // Phase 1: Waiting for goal (scale pressed, no goal yet)
+    if (scale_pressed && !puck_in_goal)
+    {
         game_state = PUCK_IN_GOAL;
 
-        if (!puck_on_scale_timer->started())
-        { // start timing how long puck is on scale
-            puck_on_scale_timer->start();
+        if (!red_puck_timer->started())
+        {
+            // Start timing how long puck is on scale
+            red_puck_timer->start();
         }
         else
-        { // Puck is on the scale and the timer is already running
-            if (puck_on_scale_timer->seconds() >= 1.0)
+        {
+            // Puck is on the scale and the timer is already running
+            if (red_puck_timer->seconds() >= 1.0)
             {
-                puck_in_goal = true;
-                puck_on_scale_timer->stop();
+                red_puck_timer->stop();
                 red_score++;
+                puck_in_goal = true;
                 game_state = GOAL_SCORED;
-            }
-            else
-            { // It hasn't been a full second since the puck has been on the scale
-                if (!red_loadcell->isPressed())
-                {
-                    puck_on_scale_timer->stop();
-                    game_state = ONGOING;
-                }
             }
         }
     }
-
-    if (puck_in_goal && !red_loadcell->isPressed())
-    { // Scale no longer tipped
-        if (!puck_on_scale_timer->started())
-        { // yes i am reusing the scale timer to check for how long it has not been on the timer
-            puck_on_scale_timer->start();
+    // Phase 1: Scale released before 1 second - cancel goal attempt
+    else if (!scale_pressed && !puck_in_goal && game_state == PUCK_IN_GOAL)
+    {
+        red_puck_timer->stop();
+        game_state = ONGOING;
+    }
+    // Phase 2: Goal scored, waiting for scale release
+    else if (!scale_pressed && puck_in_goal)
+    {
+        if (!red_puck_timer->started())
+        {
+            // Start timing how long puck has been off the scale
+            red_puck_timer->start();
         }
         else
-        { // puck isn't on the scale anymore and the timer is already running
-            if (puck_on_scale_timer->seconds() >= 1.0)
+        {
+            // Puck has been off the scale for the required time
+            if (red_puck_timer->seconds() >= 1.0)
             {
                 puck_in_goal = false;
-                puck_on_scale_timer->stop();
+                red_puck_timer->stop();
                 game_state = ONGOING;
             }
-            else
-            { // It hasn't been a full second since the puck has been off the scale
-                if (red_loadcell->isPressed())
-                {
-                    puck_on_scale_timer->stop();
-                    game_state = PUCK_IN_GOAL;
-                }
-            }
         }
+    }
+    // Phase 2: Scale pressed again during release wait - cancel release timer
+    else if (scale_pressed && puck_in_goal)
+    {
+        red_puck_timer->stop();
+        game_state = PUCK_IN_GOAL;
     }
 }
 
@@ -270,7 +303,9 @@ void updateGameState()
 {
     if (prev_game_state != game_state)
     {
-        Serial.printf("Game state transitioned to %s from %s", game_state, prev_game_state);
+        Serial.printf("Game state transitioned to %s from %s\n",
+                      game_state_to_string(game_state),
+                      game_state_to_string(prev_game_state));
         prev_game_state = game_state;
     }
 }

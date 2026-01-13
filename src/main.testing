@@ -166,13 +166,13 @@ void handleScores()
     }
 
     // Turn on LEDs for green score
-    for (uint8_t score = 0; score < green_score && score < TEMP_LED_COUNT; score++)
+    for (uint8_t score = 0; (score < green_score) && (score < TEMP_LED_COUNT); score++)
     {
         digitalWrite(TEMP_LED_REPLACEMENTS[score], HIGH);
     }
 
     // Turn on LEDs for red score
-    for (uint8_t score = 0; score < red_score && score < TEMP_LED_COUNT; score++)
+    for (uint8_t score = 0; (score < red_score) && (score < TEMP_LED_COUNT); score++)
     {
         digitalWrite(TEMP_LED_REPLACEMENTS[score], HIGH);
     }
