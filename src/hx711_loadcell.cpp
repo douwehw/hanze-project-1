@@ -15,6 +15,7 @@ bool hx711_loadcell::isPressed()
         // Arbitrary value due to lack of calibration
         return _scale->read() > _thresholdVal;
     }
+    return false;
 }
 
 int hx711_loadcell::val()
@@ -23,6 +24,7 @@ int hx711_loadcell::val()
     {
         return _scale->read();
     }
+    return 0;
 }
 
 void hx711_loadcell::setThreshold(int newVal)
