@@ -13,10 +13,12 @@ public:
     void pause();
     void unpause();
     void paused(bool b);
+    inline void restart() { start(); };
 
     double seconds();
     long milliseconds();
-    bool started(){return _started;}
+    inline bool started() { return _started; }
+
 private:
     long _startTicks;
     long _pausedTicks;
