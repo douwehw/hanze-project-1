@@ -2,8 +2,8 @@
 
 Timer::Timer()
 {
-    _startTicks = millis();
-    _pausedTicks = 0;
+    _start_ticks = millis();
+    _paused_ticks = 0;
     _paused = false;
     _started = false;
 }
@@ -13,7 +13,7 @@ void Timer::start()
     _started = true;
     _paused = false;
 
-    _startTicks = millis();
+    _start_ticks = millis();
 }
 
 void Timer::stop()
@@ -27,7 +27,7 @@ void Timer::pause()
     if (_started && !_paused)
     {
         _paused = true;
-        _pausedTicks = millis() - _startTicks;
+        _paused_ticks = millis() - _start_ticks;
     }
 }
 
@@ -36,8 +36,8 @@ void Timer::unpause()
     if (_paused)
     {
         _paused = false;
-        _startTicks = millis() - _pausedTicks;
-        _pausedTicks = 0;
+        _start_ticks = millis() - _paused_ticks;
+        _paused_ticks = 0;
     }
 }
 
@@ -59,11 +59,11 @@ double Timer::seconds()
     {
         if (_paused)
         {
-            return (static_cast<double>(_pausedTicks) / 1000.0);
+            return (static_cast<double>(_paused_ticks) / 1000.0);
         }
         else
         {
-            return ((static_cast<double>(millis()) - static_cast<double>(_startTicks)) / 1000.0);
+            return ((static_cast<double>(millis()) - static_cast<double>(_start_ticks)) / 1000.0);
         }
     }
 
@@ -76,11 +76,11 @@ long Timer::milliseconds()
 	{
 		if (_paused)
 		{
-			return _pausedTicks;
+			return _paused_ticks;
 		}
         else
         {
-            return (millis() - _startTicks);
+            return (millis() - _start_ticks);
         }
 	}
 

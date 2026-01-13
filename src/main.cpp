@@ -73,10 +73,15 @@ const char *game_state_to_string(GameState s)
 GameState game_state = NOT_STARTED;
 GameState prev_game_state = NOT_STARTED;
 
+/// @brief Method tied to the interrupt on the start button.
 void startGame();
+/// @brief Handles the scores of both teams. Increments the LEDs based on the score.
 void handleScores();
+/// @brief Handles the logic of the RED side of the playing field. This method counts the GREEN team's points, so it checks the weight sensor on the RED side.
 void handleGreenSideLogic();
+/// @brief Handles the logic of the RED side of the playing field. This method counts the GREEN team's points, so it checks the weight sensor on the RED side.
 void handleRedSideLogic();
+/// @brief Keeps track of the new gameState and prints it to the Serial monitor
 void updateGameState();
 
 void setup()
@@ -134,6 +139,9 @@ void startGame()
     {
         return;
     }
+
+    green_score = 0;
+    red_score = 0;
 
     // Turn off all LEDs
     for (uint8_t i = 0; i < GREEN_LED_COUNT; i++)
