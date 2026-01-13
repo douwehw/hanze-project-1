@@ -6,12 +6,15 @@
 class hx711_loadcell
 {
 public:
-    hx711_loadcell(int dout_pin, int sck_pin);
+    hx711_loadcell(int dout_pin, int sck_pin, int threshold);
     bool isPressed();
+    int val();
+    void setThreshold(int newVal);
 private:
-    HX711 *_scale;
+    HX711 *_scale = nullptr;
     bool _curState;
     bool _prevState;
+    int _thresholdVal;
 };
 
 #endif
