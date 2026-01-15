@@ -1,0 +1,123 @@
+#include <Arduino.h>
+
+#include <tm1637_display.h>
+#include <timer.h>
+#include <hx711_loadcell.h>
+
+// Pins for loadcells
+#define RED_DOUT 26
+#define RED_SCK 25
+#define GREEN_DOUT 22
+#define GREEN_SCK 23
+
+// Pins for the LED's
+const uint8_t GREEN_LEDS[] = {13, 12, 14};
+const uint8_t GREEN_LED_COUNT = 3;
+const uint8_t RED_LEDS[] = {18, 19, 21};
+const uint8_t RED_LED_COUNT = 3;
+
+// Pins for the 7-segment display
+#define CLK 16
+#define DIO 17
+
+hx711_loadcell *green_loadcell;
+hx711_loadcell *red_loadcell;
+TM1367_Display *disp;
+Timer *t;
+Timer *lt;
+
+// Wave effect for LEDs using lt timer
+uint8_t wave_position = 0;
+unsigned long last_wave_time = 0;
+const unsigned long WAVE_INTERVAL = 200; // milliseconds between wave steps
+
+void setup()
+{
+    Serial.begin(115200);
+
+    red_loadcell = new hx711_loadcell(GREEN_DOUT, GREEN_SCK, 0); // WHITE WIRE ON TOP
+    green_loadcell = new hx711_loadcell(RED_DOUT, RED_SCK, 0);   // RED WIRE ON TOP
+
+    Serial.println("Calibrating red load cell...");
+    red_loadcell->calibrate();
+    Serial.println("Red load cell calibrated!");
+
+    Serial.println("Calibrating green load cell...");
+    green_loadcell->calibrate();
+    Serial.println("Green load cell calibrated!");
+
+    disp = new TM1367_Display(CLK, DIO);
+    t = new Timer();
+    lt = new Timer();
+
+    t->start();
+    lt->start();
+
+    // Set up all LED pins and ensure they are all off
+    for (uint8_t i = 0; i < GREEN_LED_COUNT; i++)
+    {
+        pinMode(GREEN_LEDS[i], OUTPUT);
+        digitalWrite(GREEN_LEDS[i], LOW);
+    }
+
+    for (uint8_t i = 0; i < RED_LED_COUNT; i++)
+    {
+        pinMode(RED_LEDS[i], OUTPUT);
+        digitalWrite(RED_LEDS[i], LOW);
+    }
+}
+
+void loop()
+{
+    // Red loadcell data
+    Serial.print("Red   - Reading: ");
+    Serial.print(red_loadcell->val());
+    Serial.print("\tThreshold: ");
+    Serial.print(red_loadcell->getThreshold());
+    Serial.print("\tisPressed: ");
+    Serial.println(red_loadcell->isPressed());
+
+    // Green loadcell data
+    Serial.print("Green - Reading: ");
+    Serial.print(green_loadcell->val());
+    Serial.print("\tThreshold: ");
+    Serial.print(green_loadcell->getThreshold());
+    Serial.print("\tisPressed: ");
+    Serial.println(green_loadcell->isPressed());
+
+    Serial.println(); // Blank line for readability
+
+    disp->showTime(t->seconds());
+
+    if (lt->milliseconds() - last_wave_time >= WAVE_INTERVAL)
+    {
+        last_wave_time = lt->milliseconds();
+
+        // Turn off all LEDs
+        for (uint8_t i = 0; i < GREEN_LED_COUNT; i++)
+        {
+            digitalWrite(GREEN_LEDS[i], LOW);
+        }
+        for (uint8_t i = 0; i < RED_LED_COUNT; i++)
+        {
+            digitalWrite(RED_LEDS[i], LOW);
+        }
+
+        // Turn on current wave position
+        if (wave_position < GREEN_LED_COUNT)
+        {
+            digitalWrite(GREEN_LEDS[wave_position], HIGH);
+        }
+        else if (wave_position < GREEN_LED_COUNT + RED_LED_COUNT)
+        {
+            digitalWrite(RED_LEDS[wave_position - GREEN_LED_COUNT], HIGH);
+        }
+
+        // Move to next position
+        wave_position++;
+        if (wave_position >= GREEN_LED_COUNT + RED_LED_COUNT)
+        {
+            wave_position = 0;
+        }
+    }
+}
