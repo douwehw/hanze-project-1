@@ -4,15 +4,17 @@
 #include <timer.h>
 #include <hx711_loadcell.h>
 
+#define SCALE_TIME_DELAY 3
+
 // Pins for loadcells
 #define RED_DOUT 26
 #define RED_SCK 25
-#define GREEN_DOUT 2
-#define GREEN_SCK 4
+#define GREEN_DOUT 22
+#define GREEN_SCK 23
 
 // Pins for the 7-segment display
-#define CLK 17
-#define DIO 16
+#define CLK 16
+#define DIO 17
 
 // Pins for the LED's
 const uint8_t GREEN_LEDS[] = {13, 12, 14};
@@ -21,7 +23,7 @@ const uint8_t RED_LEDS[] = {18, 19, 21};
 const uint8_t RED_LED_COUNT = 3;
 
 // Pin for start button
-#define START 23
+#define START 35
 
 // Initialising sensor classes on the heap
 TM1367_Display *display;
@@ -84,6 +86,7 @@ void handleRedSideLogic();
 /// @brief Keeps track of the new gameState and prints it to the Serial monitor
 void updateGameState();
 
+
 void setup()
 {
     Serial.begin(115200);
@@ -91,8 +94,17 @@ void setup()
     // General initialising for the sensors
     display = new TM1367_Display(CLK, DIO);
     display->showTime(0);
-    green_loadcell = new hx711_loadcell(GREEN_DOUT, GREEN_SCK, 150000);
-    red_loadcell = new hx711_loadcell(RED_DOUT, RED_SCK, 150000);
+    green_loadcell = new hx711_loadcell(GREEN_DOUT, GREEN_SCK, 110000);
+    red_loadcell = new hx711_loadcell(RED_DOUT, RED_SCK, 180000);
+
+    Serial.println("Calibrating red load cell...");
+    red_loadcell->calibrate();
+    Serial.println("Red load cell calibrated!");
+
+    Serial.println("Calibrating green load cell...");
+    green_loadcell->calibrate();
+    Serial.println("Green load cell calibrated!");
+
 
     timer = new Timer();
     green_puck_timer = new Timer();
@@ -104,15 +116,23 @@ void setup()
         pinMode(GREEN_LEDS[i], OUTPUT);
         digitalWrite(GREEN_LEDS[i], LOW);
     }
+
     for (uint8_t i = 0; i < RED_LED_COUNT; i++)
     {
         pinMode(RED_LEDS[i], OUTPUT);
         digitalWrite(RED_LEDS[i], LOW);
     }
 
-    // Initialising the start button
-    pinMode(START, INPUT);
-    attachInterrupt(START, startGame, RISING);
+    Serial.println("Remove the puck, game starting in 5 seconds.");
+    delay(2000);
+    Serial.println("3");
+    delay(1000);
+    Serial.println("2");
+    delay(1000);
+    Serial.println("1");
+    delay(1000);
+    Serial.println("Game started");
+    startGame();
 }
 
 void loop()
@@ -206,7 +226,7 @@ void handleGreenSideLogic()
         else
         {
             // Puck is on the scale and the timer is already running
-            if (green_puck_timer->seconds() >= 1.0)
+            if (green_puck_timer->seconds() >= SCALE_TIME_DELAY)
             {
                 green_puck_timer->stop();
                 green_score++;
@@ -232,7 +252,7 @@ void handleGreenSideLogic()
         else
         {
             // Puck has been off the scale for the required time
-            if (green_puck_timer->seconds() >= 1.0)
+            if (green_puck_timer->seconds() >= SCALE_TIME_DELAY)
             {
                 puck_in_goal = false;
                 green_puck_timer->stop();
@@ -265,7 +285,7 @@ void handleRedSideLogic()
         else
         {
             // Puck is on the scale and the timer is already running
-            if (red_puck_timer->seconds() >= 1.0)
+            if (red_puck_timer->seconds() >= SCALE_TIME_DELAY)
             {
                 red_puck_timer->stop();
                 red_score++;
@@ -291,7 +311,7 @@ void handleRedSideLogic()
         else
         {
             // Puck has been off the scale for the required time
-            if (red_puck_timer->seconds() >= 1.0)
+            if (red_puck_timer->seconds() >= SCALE_TIME_DELAY)
             {
                 puck_in_goal = false;
                 red_puck_timer->stop();
